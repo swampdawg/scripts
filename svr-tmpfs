@@ -1,0 +1,137 @@
+#!/bin/bash
+
+NAM=`basename "$0"`
+
+MEMDEF=
+MEMDIV=3
+MNTDEF="/mnt/ram"	#~~~?MNTDEV surely?
+
+fcp_usage ()
+{
+cat<<EOF
+${NAM}: [ --help | -h ]
+${NAM}: [ query | -q ]
+${NAM}: [ start | 1 ] { [size] [mountpoint]}
+${NAM}: [ stop | 0 ]
+${NAM}: [ --chk ] [ mountpoint ]
+
+Query (existing) tmpfs mounts or start/stop one.
+
+With no options, '${NAM} 1' attempts to allocate 1/3 memory onto /mnt/ram.
+
+eg: ${NAM} 1
+eg: ${NAM} -q
+eg: ${NAM} 0
+eg: ${NAM} -q
+
+Hint:
+$ mkdir -p ~/mnt/tfs/{a,b,c,d}
+$ ${NAM} 1 8G ~/mnt/tfs/a
+$ ${NAM} 1 4G ~/mnt/tfs/b
+^^^ '${NAM} stop' only works on /mnt/ram. You have to do these manually.
+
+--chk:
+Return true if mountpoint exists else false.
+EOF
+}
+
+fcp_memfree ()
+{
+ local	r=$(cat /proc/meminfo | egrep "^MemTotal:" | awk '{print $2}')
+
+ echo "$r / 1024 / 1024" | bc
+}
+
+fcp_q ()
+{
+ df -hP | egrep "^tmpfs"
+}
+
+fcp_chk ()
+{
+ local	v="$1"
+
+ [ -z "$v" ] && v="$MNTDEF"
+ fcp_q \
+	| egrep "$v" \
+	| tr -s ' ' \
+	| sed -e 's/ /\t/g' \
+	| awk '{print $NF}' \
+	| egrep "^""$v"
+}
+
+fcp_1 ()
+{
+ local	r=`fcp_chk "$1"`
+
+ [ -z "$r" ] || {
+	echo "$NAM: \"$1\" already mounted!" 1>&2
+	exit 1
+ }
+
+ sudo mount -t tmpfs -o mode=01777,size="$2" tmpfs "$1"
+}
+
+fcp_0 ()
+{
+ local	r=`fcp_chk "$1"`
+
+ [ -z "$r" ] && {
+	echo "$NAM: \"$1\" was not mounted!" 1>&2
+	exit 1
+ }
+
+ sudo umount "$1"
+}
+
+fcp_main ()
+{
+ MEMDEF=$(echo $(fcp_memfree) / $MEMDIV | bc)
+ [ -z "$MEMDEF" ] || [[ $MEMDEF -eq 0 ]] && MEMDEF=1
+
+ [ -d "$MNTDEF" ] || {
+	sudo mkdir -p "$MNTDEF" || exit 1
+ }
+
+ case "$1" in
+	query | -q)
+	fcp_q
+	;;
+
+	start | 1)
+	[ $# -gt 2 ] && {
+		fcp_1 "$3" "$2"
+	} || {
+		fcp_1 "$MNTDEF" "$MEMDEF"G
+	}
+	;;
+
+	stop | 0)
+	[ $# -gt 1 ] && {
+		fcp_0 "$2"
+	} || {
+		fcp_0 "$MNTDEF"
+	}
+	;;
+
+	*)
+	fcp_usage
+	exit 1
+	;;
+ esac
+}
+
+case "$1" in
+	--help | -h)
+	fcp_usage
+	exit 0
+	;;
+
+	--chk)
+	fcp_chk "$2"
+	;;
+
+	*)
+	fcp_main "$@"
+	;;
+esac
