@@ -4,7 +4,7 @@ NAM=`basename "$0"`
 
 MEMDEF=
 MEMDIV=3
-MNTDEF="/mnt/ram"	#~~~?MNTDEV surely?
+MNTDEV="/mnt/ram"	#~~~?MNTDEV surely?
 
 fcp_usage ()
 {
@@ -28,7 +28,7 @@ Hint:
 $ mkdir -p ~/mnt/tfs/{a,b,c,d}
 $ ${NAM} 1 8G ~/mnt/tfs/a
 $ ${NAM} 1 4G ~/mnt/tfs/b
-^^^ '${NAM} stop' only works on /mnt/ram. You have to do these manually.
+^^^ '${NAM} stop' only works on ${MNTDEV}. You have to do these manually.
 
 --chk:
 Return true if mountpoint exists else false.
@@ -51,7 +51,7 @@ fcp_chk ()
 {
  local	v="$1"
 
- [ -z "$v" ] && v="$MNTDEF"
+ [ -z "$v" ] && v="$MNTDEV"
  fcp_q \
 	| egrep "$v" \
 	| tr -s ' ' \
@@ -89,8 +89,8 @@ fcp_main ()
  MEMDEF=$(echo $(fcp_memfree) / $MEMDIV | bc)
  [ -z "$MEMDEF" ] || [[ $MEMDEF -eq 0 ]] && MEMDEF=1
 
- [ -d "$MNTDEF" ] || {
-	sudo mkdir -p "$MNTDEF" || exit 1
+ [ -d "$MNTDEV" ] || {
+	sudo mkdir -p "$MNTDEV" || exit 1
  }
 
  case "$1" in
@@ -102,7 +102,7 @@ fcp_main ()
 	[ $# -gt 2 ] && {
 		fcp_1 "$3" "$2"
 	} || {
-		fcp_1 "$MNTDEF" "$MEMDEF"G
+		fcp_1 "$MNTDEV" "$MEMDEF"G
 	}
 	;;
 
@@ -110,7 +110,7 @@ fcp_main ()
 	[ $# -gt 1 ] && {
 		fcp_0 "$2"
 	} || {
-		fcp_0 "$MNTDEF"
+		fcp_0 "$MNTDEV"
 	}
 	;;
 
