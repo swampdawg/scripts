@@ -1,0 +1,169 @@
+#!/bin/bash
+
+NAM=`basename "$0"`
+GOSUB="/usr/local/sd/syschk/lib"
+
+. "$GOSUB/f_tmp"
+
+USR=`id -un`
+GRP=`id -gn`
+DAT="/home/$USR/.sd/$NAM"
+
+EXE="$EDITOR"
+: ${EXE:="nano"}
+
+fcp_usage ()
+{
+cat<<EOF
+${NAM}: [ --help | -h ]
+${NAM}: [ --diff ] [ sp ]
+${NAM}: [ --undo ] [ sp ]
+${NAM}: [ --lost ] [ sp ]
+${NAM}: [ --show ]
+${NAM}: [ args ] [ sp]
+
+sp=source path
+lp=local path
+
+Invoke EDITOR (or nano) on file 'sp' as..
+\$EDITOR [ args ] [ sp ]
+If more than one 'sp' is passed, the remainder are ignored.
+
+The original 'sp' file is copied to a shadow folder (lp) in..
+	$DAT/
+An empty shadow file is created should 'sp' not exist.
+Ownership of 'lp' files is $USR:$GRP.
+
+These take precendence over the EDITOR arguments:
+--diff [ sp ]
+Invoke 'diff -u' for 'sp'.
+
+--undo [ sp ]
+Restore (reverse the patch) back to original contents. Remove record of it.
+
+--lost [ sp ]
+Copy the modified file back over the original. Keep record of it.
+
+--show
+Show names of all modified files.
+EOF
+}
+
+fcp_init ()
+{
+ mkdir -p "$DAT" || exit 1
+
+ while [ $# -gt 0 ]
+ do
+	case "$1" in
+		-?*)
+		shift
+		;;
+
+		*)
+		echo `realpath -m "$1"`
+		return 0
+		;;
+	esac
+ done
+ return 1
+}
+
+fcp_term ()
+{
+ chown -R "$USR":"$GRP" "$DAT"
+}
+
+fcp_main ()
+{
+ local	sp
+ local	sd
+ local	fn
+ local	ld
+ local	lp
+ local	mp
+ local	r
+
+ [ $# -lt 1 ] && {
+	fcp_usage
+	exit 1
+ }
+
+ case "$1" in
+	--show)
+	find "$DAT" -type f -name '*.MODIFIED' \
+	| sed -e 's/\.MODIFIED//' \
+	| sed -e "s,$DAT,,"
+	exit $?
+	;;
+
+	*)
+	;;
+ esac
+
+ sp=`fcp_init "$@"`
+ [ $? -eq 0 ] || {
+	fcp_usage
+	exit 1
+ }
+ sd=`dirname "$sp"`
+ fn=`basename "$sp"`
+ ld=`realpath -m "$DAT""/""$sd""/"`
+ lp="$ld""/""$fn"
+ mp="$lp"".MODIFIED"
+
+ case "$1" in
+	--diff)
+	diff -u "$lp" "$mp"
+	exit $?
+	;;
+
+	--undo)
+	r=$(printf %s "$DAT""/" | LC_ALL=C tr -dc / | wc -c)
+	f_tmp_add
+	diff -u "$lp" "$mp" > `f_tmp_top`
+	(
+	cd / || exit 1
+	patch -R -p"$r" < `f_tmp_top`
+	)
+	r=$?
+	f_tmp_rem
+	[ $r -eq 0 ] || exit 1
+	rm -v "$lp" "$mp"
+	rmdir "$ld" 2>/dev/null
+	exit 0
+	;;
+
+	--lost)
+	cp -vp "$mp" "$sp" || exit 1
+	exit 0
+	;;
+
+	*)
+	;;
+ esac
+
+ mkdir -p "$ld" || exit 1
+ [ -f "$sp" ] && {
+	[ -f "$lp" ] || {
+		cp -p "$sp" "$lp" || exit 1
+	}
+	} || {
+	touch "$lp" || exit 1
+ }
+ $EXE "$@"
+ [ -f "$sp" ] && {
+	cp -p "$sp" "$mp"
+ }
+ fcp_term
+}
+
+case "$1" in
+	--help | -h)
+	fcp_usage
+	;;
+
+	*)
+	fcp_main "$@"
+	;;
+esac
